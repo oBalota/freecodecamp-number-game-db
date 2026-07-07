@@ -1,0 +1,64 @@
+#!/bin/bash
+
+PSQL="psql --username=freecodecamp --dbname=number_guess -t --no-align -c"
+
+# Secret number üretme (1 ile 1000 arasında)
+SECRET_NUMBER=$(( RANDOM % 1000 + 1 ))
+
+echo "Enter your username:"
+read USERNAME
+
+# Kullanıcıyı veritabanında ara
+USER_ID=$($PSQL "SELECT user_id FROM users WHERE username='$USERNAME'")
+
+if [[ -z $USER_ID ]]
+then
+  # Yeni kullanıcıysa
+  echo "Welcome, $USERNAME! It looks like this is your first time here."
+  # Kullanıcıyı veritabanına ekle
+  INSERT_USER_RESULT=$($PSQL "INSERT INTO users(username) VALUES('$USERNAME')")
+  USER_ID=$($PSQL "SELECT user_id FROM users WHERE username='$USERNAME'")
+else
+  # Eski kullanıcıysa istatistiklerini getir
+  GAMES_PLAYED=$($PSQL "SELECT COUNT(*) FROM games WHERE user_id=$USER_ID")
+  BEST_GAME=$($PSQL "SELECT MIN(guesses_count) FROM games WHERE user_id=$USER_ID")
+  
+  # Eğer daha önce hiç oyun bitirmediyse best_game 0 veya boş görünebilir, kontrol et
+  if [[ -z $BEST_GAME ]]
+  then
+    BEST_GAME=0
+  fi
+  
+  echo "Welcome back, $USERNAME! You have played $GAMES_PLAYED games, and your best game took $BEST_GAME guesses."
+fi
+
+# Oyunu başlat
+echo "Guess the secret number between 1 and 1000:"
+GUESS_COUNT=0
+
+while true
+do
+  read USER_GUESS
+  ((GUESS_COUNT++))
+
+  # Girdinin tam sayı olup olmadığını kontrol et
+  if [[ ! $USER_GUESS =~ ^[0-9]+$ ]]
+  then
+    echo "That is not an integer, guess again:"
+  elif [[ $USER_GUESS -eq $SECRET_NUMBER ]]
+  then
+    # Sayı doğru tahmin edildiğinde döngüden çık
+    break
+  elif [[ $USER_GUESS -gt $SECRET_NUMBER ]]
+  then
+    echo "It's lower than that, guess again:"
+  else
+    echo "It's higher than that, guess again:"
+  fi
+done
+
+# Başarı mesajı
+echo "You guessed it in $GUESS_COUNT tries. The secret number was $SECRET_NUMBER. Nice job!"
+
+# Oyun sonucunu veritabanına kaydet
+INSERT_GAME_RESULT=$($PSQL "INSERT INTO games(user_id, guesses_count) VALUES($USER_ID, $GUESS_COUNT)")
